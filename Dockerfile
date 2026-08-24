@@ -45,23 +45,25 @@ RUN cat << 'EOF' > /app/start.sh
 #!/bin/bash
 PORT=${PORT:-8080}
 
-# If config.yaml does not exist in the mounted data volume, create it from the example
 if [ ! -f /app/data/config.yaml ]; then
     cp /app/config.example.yaml /app/data/config.yaml
 fi
 
-# FORCE host to 0.0.0.0 so Railway's external proxy can reach the container
+# CLEANUP: Strip Windows carriage returns and invisible control characters
+sed -i 's/\r$//' /app/data/config.yaml 2>/dev/null || true
+tr -d '\000-\010\013\014\016-\037' < /app/data/config.yaml > /tmp/cfg_clean.yaml && mv /tmp/cfg_clean.yaml /app/data/config.yaml
+
+# Force host to 0.0.0.0 for Railway networking
 sed -i -E "s/^([[:space:]]*host:)[[:space:]]*.+/\1 0.0.0.0/g" /app/data/config.yaml
 
-# Update port to Railway's dynamically assigned PORT env var
+# Update port to Railway PORT env var
 sed -i -E "s/^([[:space:]]*port:)[[:space:]]*[0-9]+/\1 $PORT/g" /app/data/config.yaml
 
-# Force TLS off (Railway handles HTTPS termination at the edge)
+# Disable HTTPS as Railway handles TLS at the edge
 sed -i -E "s/^([[:space:]]*tls_enabled:)[[:space:]]*[a-zA-Z]+/\1 false/g" /app/data/config.yaml
 sed -i -E "s/^([[:space:]]*tls_auto_self_sign:)[[:space:]]*[a-zA-Z]+/\1 false/g" /app/data/config.yaml
 
 echo "Starting CyberStrikeAI on port $PORT..."
-# Actually execute the binary!
 ./cyberstrike-ai -config /app/data/config.yaml --http
 EOF
 
