@@ -12,8 +12,7 @@ RUN apt-get update && apt-get install -y \
 RUN git clone https://github.com/sullo/nikto.git /opt/nikto && \
     ln -s /opt/nikto/program/nikto.pl /usr/local/bin/nikto
 
-# 3. Compile popular Go-based security tools
-# Nuclei v3.11.1 requires Go 1.26, which is now natively available in our base image!
+# 3. Compile popular Go-based security tools (Nuclei v3.11.1 requires Go 1.26)
 RUN go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest && \
     go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest && \
     go install github.com/ffuf/ffuf/v2@latest && \
@@ -41,20 +40,32 @@ ENV GOPROXY=https://proxy.golang.org,direct
 RUN go mod download
 RUN go build -o cyberstrike-ai cmd/server/main.go
 
-# Create a start script to handle runtime configuration and Railway specifics
-RUN echo '#!/bin/bash\n\
-PORT=${PORT:-8080}\n\
-# If config.yaml does not exist in the mounted data volume, create it\n\
-if [ ! -f /app/data/config.yaml ]; then\n\
-    cp /app/config.example.yaml /app/data/config.yaml\n\
-fi\n\
-# Update port to Railway PORT env var\n\
-sed -i -E "s/^([[:space:]]*port:)[[:space:]]*[0-9]+/\1 $PORT/g" /app/data/config.yaml\n\
-# Disable HTTPS as Railway handles TLS at the edge\n\
-sed -i -E "s/^([[:space:]]*tls_enabled:)[[:space:]]*true/\1 false/g" /app/data/config.yaml\n\
-sed -i -E "s/^([[:space:]]*tls_auto_self_sign:)[[:space:]]*true/\1 false/g" /app/data/config.yaml\n\
-echo "Starting CyberStrikeAI on port $PORT..." \
-./cyberstrike-ai -config /app/data/config.yaml --http' > /app/start.sh && chmod +x /app/start.sh
+# Use a heredoc to safely and cleanly create the startup script without escaping issues
+RUN cat << 'EOF' > /app/start.sh
+#!/bin/bash
+PORT=${PORT:-8080}
+
+# If config.yaml does not exist in the mounted data volume, create it from the example
+if [ ! -f /app/data/config.yaml ]; then
+    cp /app/config.example.yaml /app/data/config.yaml
+fi
+
+# FORCE host to 0.0.0.0 so Railway's external proxy can reach the container
+sed -i -E "s/^([[:space:]]*host:)[[:space:]]*.+/\1 0.0.0.0/g" /app/data/config.yaml
+
+# Update port to Railway's dynamically assigned PORT env var
+sed -i -E "s/^([[:space:]]*port:)[[:space:]]*[0-9]+/\1 $PORT/g" /app/data/config.yaml
+
+# Force TLS off (Railway handles HTTPS termination at the edge)
+sed -i -E "s/^([[:space:]]*tls_enabled:)[[:space:]]*[a-zA-Z]+/\1 false/g" /app/data/config.yaml
+sed -i -E "s/^([[:space:]]*tls_auto_self_sign:)[[:space:]]*[a-zA-Z]+/\1 false/g" /app/data/config.yaml
+
+echo "Starting CyberStrikeAI on port $PORT..."
+# Actually execute the binary!
+./cyberstrike-ai -config /app/data/config.yaml --http
+EOF
+
+RUN chmod +x /app/start.sh
 
 EXPOSE 8080
 CMD ["/app/start.sh"]
