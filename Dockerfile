@@ -1,4 +1,4 @@
-FROM golang:1.25-bookworm
+FROM golang:1.26-bookworm
 
 # 1. Install system dependencies, python, and perl (required for nikto)
 RUN apt-get update && apt-get install -y \
@@ -12,7 +12,8 @@ RUN apt-get update && apt-get install -y \
 RUN git clone https://github.com/sullo/nikto.git /opt/nikto && \
     ln -s /opt/nikto/program/nikto.pl /usr/local/bin/nikto
 
-# 3. Compile popular Go-based security tools (Nuclei, Subfinder, ffuf, httpx)
+# 3. Compile popular Go-based security tools
+# Nuclei v3.11.1 requires Go 1.26, which is now natively available in our base image!
 RUN go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest && \
     go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest && \
     go install github.com/ffuf/ffuf/v2@latest && \
